@@ -1,41 +1,60 @@
 # SkyBook.Api
 
-An ASP.NET Core 8 Web API that handles **user accounts only** — signup and
-login — for the SkyBook Flutter app, backed by a **Supabase Postgres**
-database via Entity Framework Core.
-
-It intentionally does *not* handle flights, bookings, wallet, etc. — those
-stay client-side (sample data) or come from aviationstack.com directly from
-the Flutter app.
+An ASP.NET Core 8 Web API for the SkyBook Flutter app, backed by a
+**Supabase Postgres** database via Entity Framework Core. It handles user
+accounts (signup/login), bookings, and the in-app wallet. Flight search
+itself still comes straight from aviationstack.com on the Flutter side —
+that's a flight-status/schedule API, not something a booking backend needs
+to proxy.
 
 ## Endpoints
 
-| Method | Path              | Body                                                        | Returns                                  |
-|--------|-------------------|--------------------------------------------------------------|-------------------------------------------|
-| POST   | `/api/auth/signup`| `{ "fullName", "email", "phone", "password" }`               | `{ "token", "fullName", "email" }`        |
-| POST   | `/api/auth/login` | `{ "emailOrPhone", "password" }`                              | `{ "token", "fullName", "email" }`        |
+| Method | Path                | Auth | Body                                                          | Returns                                             |
+|--------|---------------------|------|-----------------------------------------------------------------|-------------------------------------------------------|
+| POST   | `/api/auth/signup`  | —    | `{ "fullName", "email", "phone", "password" }`                  | `{ "token", "fullName", "email" }`                     |
+| POST   | `/api/auth/login`   | —    | `{ "emailOrPhone", "password" }`                                 | `{ "token", "fullName", "email" }`                     |
+| GET    | `/api/profile`      | JWT  | —                                                                | Profile + trip counts                                  |
+| PUT    | `/api/profile`      | JWT  | `{ "fullName", "phone" }`                                        | Updated profile                                        |
+| GET    | `/api/bookings`     | JWT  | —                                                                | This user's bookings (newest first)                    |
+| GET    | `/api/bookings/{id}`| JWT  | —                                                                | A single booking                                       |
+| POST   | `/api/bookings`     | JWT  | Flight/seat/price details (see `CreateBookingRequest`)           | The created booking; also debits the wallet             |
+| GET    | `/api/wallet`       | JWT  | —                                                                | `{ "balance", "transactions": [...] }`                  |
+| POST   | `/api/wallet/topup` | JWT  | `{ "amount", "label" }`                                          | The new transaction                                     |
 
 Passwords are hashed with BCrypt before storage. Successful auth returns a
-JWT the Flutter app stores locally and can send as `Authorization: Bearer
-<token>` on future authenticated calls (none are wired up yet since the
-brief only asked for user info / login / signup).
+JWT the Flutter app stores locally and sends as `Authorization: Bearer
+<token>` on every authenticated call above. Guest sessions (no token) never
+hit the JWT-protected endpoints — the app keeps guests on local/sample data
+for those screens, since there's no account to attach a booking or wallet
+entry to.
+
+A booking's `Upcoming` vs `Past` status is derived from its `depart_date`
+compared to "now", not stored — so it can never drift out of sync. Same
+idea for the wallet: the balance returned by `GET /api/wallet` is always
+the live sum of that user's transactions, not a separately stored number.
 
 ## 1. Supabase project — already set up
 
-The `skybook` Supabase project has been created for you and the `users`
-table is live:
+The `skybook` Supabase project has been created for you:
 
 - Project ref: `iqyokfghzlbvpdzbgavt`
 - Project URL: `https://iqyokfghzlbvpdzbgavt.supabase.co`
 - Database host: `db.iqyokfghzlbvpdzbgavt.supabase.co`
 - Region: `us-east-1`
-- `public.users` table: created, with a unique index on `email`, matching
-  `AppDbContext.cs` exactly (verified via `list_tables`)
-- Row Level Security is enabled on `users` with no policies — that's
-  intentional. This API talks to Postgres directly as the `postgres` role
-  (via the connection string below), which owns the table and bypasses
-  RLS entirely. RLS only matters for access through Supabase's PostgREST
-  API / anon-key clients, which this backend doesn't use.
+
+Run the SQL migrations **in order** in the Supabase SQL editor before
+starting the API:
+
+1. `supabase/001_create_users_table.sql`
+2. `supabase/002_create_bookings_table.sql`
+3. `supabase/003_create_wallet_transactions_table.sql`
+
+Each mirrors its matching `DbSet<T>` in `AppDbContext.cs` exactly. Row
+Level Security is enabled with no policies on all three — intentional,
+since this API talks to Postgres directly as the `postgres` role via the
+connection string, which owns the tables and bypasses RLS. RLS only
+matters for access through Supabase's PostgREST API / anon-key clients,
+which this backend doesn't use.
 
 **One manual step required:** the database password isn't something an
 API/automation can retrieve — Supabase only shows it once, at project
@@ -48,6 +67,7 @@ Grab (or reset) it yourself:
 
 Then drop it into the connection string below (already pre-filled with
 the real host).
+
 
 ## 2. Configure the API
 
@@ -86,7 +106,7 @@ By default it listens on `http://localhost:5236` (see
 `Properties/launchSettings.json`) and serves Swagger UI at
 `http://localhost:5236/swagger` in development.
 
-The table is created directly via the SQL script above, so you don't need
+The tables are created directly via the SQL scripts above, so you don't need
 to run EF Core migrations — but if you'd rather manage the schema through
 EF Core migrations instead of raw SQL, you can scaffold them once the
 project builds:
