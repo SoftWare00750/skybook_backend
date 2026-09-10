@@ -13,6 +13,8 @@ to proxy.
 |--------|---------------------|------|-----------------------------------------------------------------|-------------------------------------------------------|
 | POST   | `/api/auth/signup`  | —    | `{ "fullName", "email", "phone", "password" }`                  | `{ "token", "fullName", "email" }`                     |
 | POST   | `/api/auth/login`   | —    | `{ "emailOrPhone", "password" }`                                 | `{ "token", "fullName", "email" }`                     |
+| POST   | `/api/auth/google`  | —    | `{ "idToken" }` (from Google Sign-In on the Flutter app)         | `{ "token", "fullName", "email" }`                     |
+| POST   | `/api/auth/facebook`| —    | `{ "accessToken" }` (from Facebook Login on the Flutter app)     | `{ "token", "fullName", "email" }`                     |
 | GET    | `/api/profile`      | JWT  | —                                                                | Profile + trip counts                                  |
 | PUT    | `/api/profile`      | JWT  | `{ "fullName", "phone" }`                                        | Updated profile                                        |
 | GET    | `/api/bookings`     | JWT  | —                                                                | This user's bookings (newest first)                    |
@@ -27,6 +29,39 @@ JWT the Flutter app stores locally and sends as `Authorization: Bearer
 hit the JWT-protected endpoints — the app keeps guests on local/sample data
 for those screens, since there's no account to attach a booking or wallet
 entry to.
+
+### Google / Facebook sign-in
+
+`/api/auth/google` and `/api/auth/facebook` never trust the Flutter app's
+word for who signed in — they take the raw token the native SDK produced
+and verify it server-side (Google via `oauth2.googleapis.com/tokeninfo`,
+Facebook via a Graph API `/me` call using the token itself), then find or
+create a user by the verified email and issue our own JWT exactly like
+`/login` does. If an email from Google/Facebook matches an existing
+password account, that same account is signed into — one person, one
+account, regardless of how they choose to sign in each time.
+
+**This will 401 until you configure real OAuth credentials** — there's no
+way around that, since Google and Facebook only issue tokens for apps
+registered under *your* developer accounts. Checklist:
+
+1. **Google**: In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   create an OAuth consent screen, then three OAuth client IDs: one
+   **Web application** (this is the "server client ID" — put it in both
+   this API's `Google:ClientId` config *and* the Flutter app's
+   `AppConfig.googleServerClientId`), one **Android** (needs your app's
+   package name + SHA-1 signing fingerprint), and one **iOS** (needs your
+   bundle ID).
+2. **Facebook**: Create an app at [Meta for Developers](https://developers.facebook.com/apps),
+   add the **Facebook Login** product, and fill in your Android package
+   name + key hash and iOS bundle ID under Settings. Copy the App ID /
+   Client Token into the Flutter app's Android `strings.xml` and iOS
+   `Info.plist` (see `frontend/README.md`). The backend doesn't need a
+   Facebook secret for this flow — verifying via the Graph API only needs
+   the access token the client already has.
+3. Setting `Google:ClientId` here is optional but recommended — without
+   it, this backend accepts a valid Google ID token issued for *any*
+   Google app, not just yours.
 
 A booking's `Upcoming` vs `Past` status is derived from its `depart_date`
 compared to "now", not stored — so it can never drift out of sync. Same
@@ -48,6 +83,7 @@ starting the API:
 1. `supabase/001_create_users_table.sql`
 2. `supabase/002_create_bookings_table.sql`
 3. `supabase/003_create_wallet_transactions_table.sql`
+4. `supabase/004_add_provider_to_users.sql`
 
 Each mirrors its matching `DbSet<T>` in `AppDbContext.cs` exactly. Row
 Level Security is enabled with no policies on all three — intentional,

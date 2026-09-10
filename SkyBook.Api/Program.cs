@@ -21,6 +21,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddSingleton<JwtTokenService>();
 
+// SocialAuthService calls Google/Facebook over HTTP to verify tokens
+// server-side — AddHttpClient gives it a pooled, DNS-refreshing HttpClient
+// rather than a single long-lived instance.
+builder.Services.AddHttpClient<SocialAuthService>();
+
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"] ?? throw new InvalidOperationException("Missing Jwt:Key in configuration.");
 

@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
             entity.Property(u => u.Email).HasColumnName("email").IsRequired().HasMaxLength(320);
             entity.Property(u => u.Phone).HasColumnName("phone").HasMaxLength(30);
             entity.Property(u => u.PasswordHash).HasColumnName("password_hash").IsRequired();
+            entity.Property(u => u.Provider).HasColumnName("provider").IsRequired().HasMaxLength(20).HasDefaultValue("password");
             entity.Property(u => u.CreatedAt).HasColumnName("created_at");
             entity.HasIndex(u => u.Email).IsUnique();
         });

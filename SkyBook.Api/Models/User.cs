@@ -12,5 +12,14 @@ public class User
     public string Email { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public string PasswordHash { get; set; } = string.Empty;
+
+    /// How this account was created / how it signs in: "password",
+    /// "google", or "facebook". Purely informational (e.g. so the profile
+    /// screen could show "Signed in with Google") — a social user can
+    /// still exist even though PasswordHash is set to an unusable random
+    /// value rather than left null, to avoid changing that column's
+    /// nullability.
+    public string Provider { get; set; } = "password";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
