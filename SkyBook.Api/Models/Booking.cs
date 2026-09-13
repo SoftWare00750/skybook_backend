@@ -35,5 +35,15 @@ public class Booking
     /// "Confirmed" or "Cancelled". Upcoming/Past is derived from DepartDate.
     public string Status { get; set; } = "Confirmed";
 
+    /// How this booking was paid for: "card" | "bank_transfer" | "wallet" |
+    /// "other". Set from the result of POST /api/payments/simulate.
+    public string? PaymentMethod { get; set; }
+
+    /// Display label of the method used, e.g. "Visa •••• 4242", and the
+    /// simulated payment's reference code, e.g. "PAY-7F3K9QZL". Both are
+    /// shown on the booking confirmation / details screens.
+    public string? PaymentMethodLabel { get; set; }
+    public string? PaymentReference { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

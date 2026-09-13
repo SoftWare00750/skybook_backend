@@ -66,6 +66,22 @@ public class BookingsController : ControllerBase
         }
 
         var userId = this.GetUserId();
+        var paymentMethod = request.PaymentMethod?.Trim().ToLowerInvariant();
+
+        // A wallet balance check happens up front in
+        // POST /api/payments/simulate, but re-check here too since some
+        // time (and possibly other spending) may have passed between the
+        // two calls.
+        if (paymentMethod == "wallet")
+        {
+            var balance = await _db.WalletTransactions
+                .Where(w => w.UserId == userId)
+                .SumAsync(w => (decimal?)w.Amount) ?? 0;
+            if (request.TotalPrice > balance)
+            {
+                return BadRequest(new ErrorResponse($"Insufficient wallet balance. Available: ${balance:0.00}."));
+            }
+        }
 
         var booking = new Booking
         {
@@ -85,18 +101,28 @@ public class BookingsController : ControllerBase
             Passengers = request.Passengers <= 0 ? 1 : request.Passengers,
             TotalPrice = request.TotalPrice,
             Status = "Confirmed",
+            PaymentMethod = paymentMethod,
+            PaymentMethodLabel = request.PaymentMethodLabel,
+            PaymentReference = request.PaymentReference,
         };
 
         _db.Bookings.Add(booking);
 
-        // Debit the wallet in the same transaction so a booking always has
-        // a matching ledger entry.
-        _db.WalletTransactions.Add(new WalletTransaction
+        // Only a booking paid "from wallet" touches the wallet ledger here.
+        // Card / bank transfer / other were already charged directly via
+        // POST /api/payments/simulate, so debiting the wallet for those
+        // too would take money that was never actually funded through it.
+        if (paymentMethod == "wallet")
         {
-            UserId = userId,
-            Label = $"Flight Booking · {booking.Airline} {booking.FlightCode}",
-            Amount = -booking.TotalPrice,
-        });
+            _db.WalletTransactions.Add(new WalletTransaction
+            {
+                UserId = userId,
+                Label = $"Flight Booking · {booking.Airline} {booking.FlightCode}",
+                Amount = -booking.TotalPrice,
+                Method = "wallet",
+                Reference = request.PaymentReference,
+            });
+        }
 
         await _db.SaveChangesAsync();
         _logger.LogInformation("Booking {Ref} created for user {UserId}", booking.BookingRef, userId);
@@ -129,6 +155,9 @@ public class BookingsController : ControllerBase
         b.TotalPrice,
         b.Status,
         b.DepartDate >= DateOnly.FromDateTime(DateTime.UtcNow),
+        b.PaymentMethod,
+        b.PaymentMethodLabel,
+        b.PaymentReference,
         b.CreatedAt
     );
 }

@@ -13,7 +13,15 @@ public record CreateBookingRequest(
     string SeatNumber,
     string CabinClass,
     int Passengers,
-    decimal TotalPrice
+    decimal TotalPrice,
+    // Set from the POST /api/payments/simulate response that should have
+    // just run on the client before this call. PaymentMethod of "wallet"
+    // is the only one that debits the wallet ledger here — card / bank
+    // transfer / other are charged directly via the simulated payment and
+    // just get recorded on the booking for the receipt.
+    string? PaymentMethod,
+    string? PaymentMethodLabel,
+    string? PaymentReference
 );
 
 public record BookingResponse(
@@ -34,5 +42,8 @@ public record BookingResponse(
     decimal TotalPrice,
     string Status,
     bool IsUpcoming,
+    string? PaymentMethod,
+    string? PaymentMethodLabel,
+    string? PaymentReference,
     DateTime CreatedAt
 );

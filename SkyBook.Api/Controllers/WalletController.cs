@@ -36,11 +36,14 @@ public class WalletController : ControllerBase
 
         return Ok(new WalletResponse(
             balance,
-            transactions.Select(t => new WalletTransactionResponse(t.Id, t.Label, t.Amount, t.CreatedAt)).ToList()
+            transactions.Select(t => new WalletTransactionResponse(t.Id, t.Label, t.Amount, t.Method, t.Reference, t.CreatedAt)).ToList()
         ));
     }
 
     // POST /api/wallet/topup
+    // Called once POST /api/payments/simulate has charged a card / bank
+    // transfer / other method for the same amount, so this just records
+    // the resulting credit on the wallet ledger.
     [HttpPost("topup")]
     public async Task<IActionResult> TopUp([FromBody] TopUpRequest request)
     {
@@ -50,16 +53,24 @@ public class WalletController : ControllerBase
         }
 
         var userId = this.GetUserId();
+        var label = string.IsNullOrWhiteSpace(request.Label)
+            ? (string.IsNullOrWhiteSpace(request.MethodLabel) ? "Money Added" : $"Money Added · {request.MethodLabel}")
+            : request.Label!;
+
         var transaction = new WalletTransaction
         {
             UserId = userId,
-            Label = string.IsNullOrWhiteSpace(request.Label) ? "Money Added" : request.Label!,
+            Label = label,
             Amount = request.Amount,
+            Method = request.Method,
+            Reference = request.Reference,
         };
 
         _db.WalletTransactions.Add(transaction);
         await _db.SaveChangesAsync();
 
-        return Created(string.Empty, new WalletTransactionResponse(transaction.Id, transaction.Label, transaction.Amount, transaction.CreatedAt));
+        return Created(string.Empty, new WalletTransactionResponse(
+            transaction.Id, transaction.Label, transaction.Amount, transaction.Method, transaction.Reference, transaction.CreatedAt
+        ));
     }
 }

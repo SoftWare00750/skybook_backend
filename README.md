@@ -19,9 +19,22 @@ to proxy.
 | PUT    | `/api/profile`      | JWT  | `{ "fullName", "phone" }`                                        | Updated profile                                        |
 | GET    | `/api/bookings`     | JWT  | —                                                                | This user's bookings (newest first)                    |
 | GET    | `/api/bookings/{id}`| JWT  | —                                                                | A single booking                                       |
-| POST   | `/api/bookings`     | JWT  | Flight/seat/price details (see `CreateBookingRequest`)           | The created booking; also debits the wallet             |
+| POST   | `/api/bookings`     | JWT  | Flight/seat/price + payment details (see `CreateBookingRequest`) | The created booking; debits the wallet only when paid "from wallet" |
 | GET    | `/api/wallet`       | JWT  | —                                                                | `{ "balance", "transactions": [...] }`                  |
-| POST   | `/api/wallet/topup` | JWT  | `{ "amount", "label" }`                                          | The new transaction                                     |
+| POST   | `/api/wallet/topup` | JWT  | `{ "amount", "label", "method", "methodLabel", "reference" }`    | The new transaction                                     |
+| GET    | `/api/payment-methods`       | JWT | —                                                        | This user's saved cards/bank accounts/other methods      |
+| POST   | `/api/payment-methods`       | JWT | `{ "type", "cardNumber"/"accountNumber"/"otherProvider", ... }` (see `AddPaymentMethodRequest`) | The saved payment method (only last-4 + brand are stored) |
+| PUT    | `/api/payment-methods/{id}/default` | JWT | —                                                  | The now-default payment method                            |
+| DELETE | `/api/payment-methods/{id}` | JWT | —                                                         | 204 No Content                                             |
+| POST   | `/api/payments/simulate`    | JWT | `{ "amount", "method", "purpose", ... }` (see `SimulatePaymentRequest`) | A simulated charge receipt (always succeeds except an over-balance wallet charge) |
+| GET    | `/api/payments`             | JWT | —                                                         | This user's payment receipt history                        |
+
+There's no real payment gateway anywhere in this API — `POST
+/api/payments/simulate` is a stand-in for one, so the checkout flow (pay by
+card / bank transfer / wallet balance / other) works end-to-end without
+handling real money. The Flutter app calls it first, then passes the
+resulting reference into `POST /api/bookings` or `POST /api/wallet/topup`
+so there's a receipt trail either way.
 
 Passwords are hashed with BCrypt before storage. Successful auth returns a
 JWT the Flutter app stores locally and sends as `Authorization: Bearer
@@ -84,9 +97,12 @@ starting the API:
 2. `supabase/002_create_bookings_table.sql`
 3. `supabase/003_create_wallet_transactions_table.sql`
 4. `supabase/004_add_provider_to_users.sql`
+5. `supabase/005_create_payment_methods_table.sql`
+6. `supabase/006_create_payments_table.sql`
+7. `supabase/007_add_payment_fields_to_bookings.sql`
 
 Each mirrors its matching `DbSet<T>` in `AppDbContext.cs` exactly. Row
-Level Security is enabled with no policies on all three — intentional,
+Level Security is enabled with no policies on all of them — intentional,
 since this API talks to Postgres directly as the `postgres` role via the
 connection string, which owns the tables and bypasses RLS. RLS only
 matters for access through Supabase's PostgREST API / anon-key clients,
